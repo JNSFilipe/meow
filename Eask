@@ -10,7 +10,7 @@
 (package-file "meow.el")
 (files "meow-*.el")
 
-(script "test" "echo \"Error: no test specified\" && exit 1")
+(script "test" "emacs -Q --batch -L . -L tests -l tests/meow-vim-tests.el -f ert-run-tests-batch-and-exit")
 
 (source 'gnu)
 (source 'melpa)

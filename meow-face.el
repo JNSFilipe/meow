@@ -34,6 +34,14 @@
   "Normal state indicator."
   :group 'meow)
 
+(defface meow-visual-indicator
+  '((((class color) (background dark))
+     ())
+    (((class color) (background light))
+     ()))
+  "Visual state indicator."
+  :group 'meow)
+
 (defface meow-beacon-indicator
   '((((class color) (background dark))
      ())
@@ -72,6 +80,14 @@
     (((class color) (background light))
      (:inherit cursor)))
   "Normal state cursor."
+  :group 'meow)
+
+(defface meow-visual-cursor
+  '((((class color) (background dark))
+     (:inherit region))
+    (((class color) (background light))
+     (:inherit region)))
+  "Visual state cursor."
   :group 'meow)
 
 (defface meow-insert-cursor

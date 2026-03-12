@@ -28,7 +28,7 @@
 
 ;; Behaviors
 
-(defcustom meow-use-cursor-position-hack nil
+(defcustom meow-use-cursor-position-hack t
   "Whether to use cursor position hack."
   :group 'meow
   :type 'boolean)
@@ -69,6 +69,7 @@ This doesn't affect how keypad works on recording or executing a kmacro."
 
 (defcustom meow-replace-state-name-list
   '((normal . "NORMAL")
+    (visual . "VISUAL")
     (motion . "MOTION")
     (keypad . "KEYPAD")
     (insert . "INSERT")
@@ -80,13 +81,14 @@ This doesn't affect how keypad works on recording or executing a kmacro."
 
 (defvar meow-indicator-face-alist
   '((normal . meow-normal-indicator)
+    (visual . meow-visual-indicator)
     (motion . meow-motion-indicator)
     (keypad . meow-keypad-indicator)
     (insert . meow-insert-indicator)
     (beacon . meow-beacon-indicator))
   "Alist of meow states -> faces")
 
-(defcustom meow-select-on-change t
+(defcustom meow-select-on-change nil
   "Whether to activate region when exiting INSERT mode
  after `meow-change', `meow-change-char' and `meow-change-save'."
   :group 'meow
@@ -345,6 +347,7 @@ Nil means find the command by key binding."
 
 (defvar meow-state-mode-alist
   '((normal . meow-normal-mode)
+    (visual . meow-visual-mode)
     (insert . meow-insert-mode)
     (keypad . meow-keypad-mode)
     (motion . meow-motion-mode)
@@ -355,6 +358,7 @@ Nil means find the command by key binding."
   '((meow--cursor-null-p . meow--update-cursor-default)
     (minibufferp         . meow--update-cursor-default)
     (meow-insert-mode-p  . meow--update-cursor-insert)
+    (meow-visual-mode-p  . meow--update-cursor-visual)
     (meow-normal-mode-p  . meow--update-cursor-normal)
     (meow-motion-mode-p  . meow--update-cursor-motion)
     (meow-keypad-mode-p  . meow--update-cursor-motion)
@@ -380,6 +384,7 @@ Use (setq meow-keypad-describe-keymap-function \\='nil) to disable popup.")
 
 (defvar meow-cursor-type-default 'box)
 (defvar meow-cursor-type-normal 'box)
+(defvar meow-cursor-type-visual 'box)
 (defvar meow-cursor-type-motion 'box)
 (defvar meow-cursor-type-beacon 'box)
 (defvar meow-cursor-type-region-cursor '(bar . 2))
@@ -571,6 +576,11 @@ Has a structure of (sel-type point mark).")
 (defvar-local meow--current-state 'normal
   "A symbol represent current state.")
 
+(defvar-local meow--visual-type nil
+  "Current visual selection flavor.
+
+The value is nil, `char', `line', or `block'.")
+
 (defvar-local meow--end-kmacro-on-exit nil
   "Whether we end kmacro recording when exit insert state.")
 
@@ -678,12 +688,16 @@ The value can be nil, quick or record.")
     (meow-cancel-selection . "quit sel")
     (meow-change . "chg")
     (meow-change-save . "chg-save")
+    (meow-visual-change . "v-chg")
     (meow-replace . "rep")
     (meow-replace-save . "rep-save")
     (meow-append . "append")
     (meow-open-below . "open ↓")
     (meow-insert . "insert")
     (meow-open-above . "open ↑")
+    (meow-visual-start . "visual")
+    (meow-visual-line-start . "visual-ln")
+    (meow-visual-block-start . "visual-blk")
     (meow-block . "block")
     (meow-to-block "→block")
     (meow-line . "line")
@@ -712,9 +726,17 @@ The value can be nil, quick or record.")
     (meow-cheatsheet . "help")
     (meow-keypad-describe-key . "desc-key")
     (meow-backspace . "backspace")
+    (meow-jump-back . "<-jump")
+    (meow-jump-forward . "jump->")
     (meow-pop-to-mark . "<-mark")
     (meow-unpop-to-mark . "mark->"))
   "A list of (command . short-name)")
+
+(defvar meow--jump-back-stack nil
+  "Stack of markers for backward jump history.")
+
+(defvar meow--jump-forward-stack nil
+  "Stack of markers for forward jump history.")
 
 (defcustom meow-replace-pop-command-start-indexes
   '((meow-replace . 1)

@@ -326,6 +326,14 @@ PAIR-REGEXP-EXPR contains two regexp lists. The regexp in first
                      '(pair ("{") ("}"))
                      '(pair ("{") ("}")))
 
+(meow-thing-register 'double-quote
+                     '(regexp "\"" "\"")
+                     '(regexp "\"" "\""))
+
+(meow-thing-register 'single-quote
+                     '(regexp "'" "'")
+                     '(regexp "'" "'"))
+
 (meow-thing-register 'paragraph 'paragraph 'paragraph)
 
 (meow-thing-register 'sentence 'sentence 'sentence)

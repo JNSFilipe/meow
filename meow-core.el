@@ -57,6 +57,18 @@
   :keymap meow-normal-state-keymap
   :face meow-normal-cursor)
 
+(meow-define-state visual
+  "Meow VISUAL state minor mode."
+  :lighter " [V]"
+  :keymap meow-visual-state-keymap
+  :face meow-visual-cursor
+  (unless meow-visual-mode
+    (setq-local meow--visual-type nil)
+    (when (bound-and-true-p rectangle-mark-mode)
+      (rectangle-mark-mode -1))
+    (when (region-active-p)
+      (meow--cancel-selection))))
+
 (meow-define-state motion
   "Meow MOTION state minor mode."
   :lighter " [M]"
@@ -168,6 +180,8 @@ there's no chance for meow to call an init function."
                        `((meow-motion-mode . ,meow-motion-state-keymap)))
   (add-to-ordered-list 'emulation-mode-map-alists
                        `((meow-normal-mode . ,meow-normal-state-keymap)))
+  (add-to-ordered-list 'emulation-mode-map-alists
+                       `((meow-visual-mode . ,meow-visual-state-keymap)))
   (add-to-ordered-list 'emulation-mode-map-alists
                        `((meow-beacon-mode . ,meow-beacon-state-keymap)))
   (when meow-use-cursor-position-hack

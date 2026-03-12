@@ -41,6 +41,7 @@
 (declare-function meow-insert-mode "meow-core")
 (declare-function meow-motion-mode "meow-core")
 (declare-function meow-normal-mode "meow-core")
+(declare-function meow-visual-mode "meow-core")
 (declare-function meow-keypad-mode "meow-core")
 (declare-function meow-beacon-mode "meow-core")
 (declare-function meow-mode "meow-core")
@@ -79,6 +80,10 @@ instead execute the keyboard macro it corresponds to."
 (defun meow-normal-mode-p ()
   "Whether normal mode is enabled."
   (bound-and-true-p meow-normal-mode))
+
+(defun meow-visual-mode-p ()
+  "Whether visual mode is enabled."
+  (bound-and-true-p meow-visual-mode))
 
 (defun meow-keypad-mode-p ()
   "Whether keypad mode is enabled."
@@ -136,6 +141,14 @@ instead execute the keyboard macro it corresponds to."
     (meow--set-cursor-type meow-cursor-type-normal))
   (meow--set-cursor-color 'meow-normal-cursor))
 
+(defun meow--update-cursor-visual ()
+  "Set visual cursor type and color."
+  (if meow-use-cursor-position-hack
+      (unless (use-region-p)
+        (meow--set-cursor-type meow-cursor-type-visual))
+    (meow--set-cursor-type meow-cursor-type-visual))
+  (meow--set-cursor-color 'meow-visual-cursor))
+
 (defun meow--update-cursor-motion ()
   "Set motion cursor type and color"
   (meow--set-cursor-type meow-cursor-type-motion)
@@ -189,6 +202,12 @@ Looks up the state in meow-replace-state-name-list"
 
 (defun meow--current-state ()
   meow--current-state)
+
+(defun meow--selection-display-mode-p ()
+  "Whether selection overlays should use modal display affordances."
+  (or (meow-normal-mode-p)
+      (meow-visual-mode-p)
+      (meow-beacon-mode-p)))
 
 (defun meow--should-update-display-p ()
   (cl-case meow-update-display-in-macro
@@ -606,8 +625,7 @@ that bound to DEF. Otherwise, return DEF."
 
 (defun meow--add-fake-cursor (rol)
   (if (and meow-use-enhanced-selection-effect
-           (or (meow-normal-mode-p)
-               (meow-beacon-mode-p)))
+           (meow--selection-display-mode-p))
       (when (overlayp rol)
         (let ((start (overlay-start rol))
               (end (overlay-end rol)))
@@ -642,12 +660,14 @@ that bound to DEF. Otherwise, return DEF."
     rol))
 
 (defun meow--redisplay-highlight-region-function (start end window rol)
-  (when (and (or (meow-normal-mode-p)
-                 (meow-beacon-mode-p))
+  (when (and (meow--selection-display-mode-p)
              (equal window (selected-window)))
     (if (use-region-p)
         (meow--set-cursor-type meow-cursor-type-region-cursor)
-      (meow--set-cursor-type meow-cursor-type-normal)))
+      (meow--set-cursor-type
+       (if (meow-visual-mode-p)
+           meow-cursor-type-visual
+         meow-cursor-type-normal))))
   (when meow-use-enhanced-selection-effect
     (meow--remove-fake-cursor rol))
   (thread-first
@@ -658,9 +678,11 @@ that bound to DEF. Otherwise, return DEF."
   (meow--remove-fake-cursor rol)
   (when (and (overlayp rol)
              (equal (overlay-get rol 'window) (selected-window))
-             (or (meow-normal-mode-p)
-                 (meow-beacon-mode-p)))
-    (meow--set-cursor-type meow-cursor-type-normal))
+             (meow--selection-display-mode-p))
+    (meow--set-cursor-type
+     (if (meow-visual-mode-p)
+         meow-cursor-type-visual
+       meow-cursor-type-normal)))
   (funcall meow--backup-redisplay-unhighlight-region-function rol))
 
 (defun meow--mix-color (color1 color2 n)

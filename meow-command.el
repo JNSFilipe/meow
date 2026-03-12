@@ -168,6 +168,82 @@ This command supports `meow-selection-command-fallback'."
   (meow--cancel-selection)
   (meow--execute-kbd-macro meow--kbd-pop-marker))
 
+(defun meow--jump-marker-live-p (marker)
+  "Whether MARKER still points to a live buffer position."
+  (and (markerp marker)
+       (marker-buffer marker)
+       (buffer-live-p (marker-buffer marker))))
+
+(defun meow--pop-jump (stack-symbol)
+  "Pop and return the next live marker from STACK-SYMBOL."
+  (let ((stack (symbol-value stack-symbol)))
+    (while (and stack
+                (not (meow--jump-marker-live-p (car stack))))
+      (setq stack (cdr stack)))
+    (set stack-symbol stack)
+    (when stack
+      (prog1 (car stack)
+        (set stack-symbol (cdr stack))))))
+
+(defun meow--push-jump ()
+  "Record the current position in jump history."
+  (let ((marker (point-marker))
+        (top (car meow--jump-back-stack)))
+    (unless (and (meow--jump-marker-live-p top)
+                 (eq (marker-buffer top) (current-buffer))
+                 (= (marker-position top) (point)))
+      (push marker meow--jump-back-stack)))
+  (setq meow--jump-forward-stack nil))
+
+(defun meow--goto-jump-marker (marker)
+  "Jump to MARKER in the current window."
+  (let ((buffer (marker-buffer marker)))
+    (unless (buffer-live-p buffer)
+      (user-error "Jump target is no longer available"))
+    (switch-to-buffer buffer)
+    (goto-char (marker-position marker))
+    (recenter)))
+
+(defun meow-jump-back ()
+  "Jump backward through Meow jump history."
+  (interactive)
+  (meow--cancel-selection)
+  (if-let ((marker (meow--pop-jump 'meow--jump-back-stack)))
+      (progn
+        (push (point-marker) meow--jump-forward-stack)
+        (meow--goto-jump-marker marker))
+    (user-error "Jump history is empty")))
+
+(defun meow-jump-forward ()
+  "Jump forward through Meow jump history."
+  (interactive)
+  (meow--cancel-selection)
+  (if-let ((marker (meow--pop-jump 'meow--jump-forward-stack)))
+      (progn
+        (push (point-marker) meow--jump-back-stack)
+        (meow--goto-jump-marker marker))
+    (user-error "Forward jump history is empty")))
+
+(defun meow-goto-buffer-start ()
+  "Jump to the start of the current buffer."
+  (interactive)
+  (meow--push-jump)
+  (meow--cancel-selection)
+  (goto-char (point-min)))
+
+(defun meow-goto-buffer-end ()
+  "Jump to the end of the current buffer."
+  (interactive)
+  (meow--push-jump)
+  (meow--cancel-selection)
+  (goto-char (point-max)))
+
+(defun meow-goto-definition ()
+  "Jump to definition using xref and record jump history."
+  (interactive)
+  (meow--push-jump)
+  (meow-find-ref))
+
 ;;; Clipboards
 
 (defun meow-clipboard-yank ()
@@ -482,6 +558,11 @@ With argument ARG, do this that many times."
     (setq meow--temp-normal t)
     (meow--switch-state 'normal)))
 
+(defun meow--enter-insert-state ()
+  "Switch to INSERT and remember the entry position."
+  (meow--switch-state 'insert)
+  (setq-local meow--insert-pos (point)))
+
 (defun meow-insert ()
   "Move to the start of selection, switch to INSERT state."
   (interactive)
@@ -491,8 +572,7 @@ With argument ARG, do this that many times."
         (meow--switch-state 'motion))
     (meow--direction-backward)
     (meow--cancel-selection)
-    (meow--switch-state 'insert)
-    (setq-local meow--insert-pos (point))
+    (meow--enter-insert-state)
     (when meow-select-on-insert
       (setq-local meow--insert-activate-mark t))))
 
@@ -509,10 +589,23 @@ With argument ARG, do this that many times."
           (forward-char 1))
       (meow--direction-forward)
       (meow--cancel-selection))
-    (meow--switch-state 'insert)
-    (setq-local meow--insert-pos (point))
+    (meow--enter-insert-state)
     (when meow-select-on-append
       (setq-local meow--insert-activate-mark t))))
+
+(defun meow-insert-beginning-of-line ()
+  "Move to the start of the current line and enter INSERT state."
+  (interactive)
+  (meow--cancel-selection)
+  (goto-char (line-beginning-position))
+  (meow--enter-insert-state))
+
+(defun meow-append-end-of-line ()
+  "Move to the end of the current line and enter INSERT state."
+  (interactive)
+  (meow--cancel-selection)
+  (goto-char (line-end-position))
+  (meow--enter-insert-state))
 
 (defun meow-open-above ()
   "Open a newline above and switch to INSERT state."
@@ -520,8 +613,8 @@ With argument ARG, do this that many times."
   (if meow--temp-normal
       (progn
         (message "Quit temporary normal mode")
-        (meow--switch-state 'motion))
-    (meow--switch-state 'insert)
+      (meow--switch-state 'motion))
+    (meow--enter-insert-state)
     (goto-char (line-beginning-position))
     (save-mark-and-excursion
       (newline))
@@ -538,8 +631,8 @@ With argument ARG, do this that many times."
   (if meow--temp-normal
       (progn
         (message "Quit temporary normal mode")
-        (meow--switch-state 'motion))
-    (meow--switch-state 'insert)
+      (meow--switch-state 'motion))
+    (meow--enter-insert-state)
     (goto-char (meow--visual-line-beginning-position))
     (save-mark-and-excursion
       (newline))
@@ -554,8 +647,8 @@ With argument ARG, do this that many times."
   (if meow--temp-normal
       (progn
         (message "Quit temporary normal mode")
-        (meow--switch-state 'motion))
-    (meow--switch-state 'insert)
+      (meow--switch-state 'motion))
+    (meow--enter-insert-state)
     (goto-char (line-end-position))
     (meow--execute-kbd-macro "RET")
     (setq-local meow--insert-pos (point))
@@ -568,8 +661,8 @@ With argument ARG, do this that many times."
   (if meow--temp-normal
       (progn
         (message "Quit temporary normal mode")
-        (meow--switch-state 'motion))
-    (meow--switch-state 'insert)
+      (meow--switch-state 'motion))
+    (meow--enter-insert-state)
     (goto-char (meow--visual-line-end-position))
     (meow--execute-kbd-macro "RET")
     (setq-local meow--insert-pos (point))
@@ -585,8 +678,7 @@ This command supports `meow-selection-command-fallback'."
     (setq this-command #'meow-change)
     (meow--with-selection-fallback
      (meow--delete-region (region-beginning) (region-end))
-     (meow--switch-state 'insert)
-     (setq-local meow--insert-pos (point))
+     (meow--enter-insert-state)
      (when meow-select-on-change
        (setq-local meow--insert-activate-mark t)))))
 
@@ -595,8 +687,7 @@ This command supports `meow-selection-command-fallback'."
   (interactive)
   (when (< (point) (point-max))
     (meow--execute-kbd-macro meow--kbd-delete-char)
-    (meow--switch-state 'insert)
-    (setq-local meow--insert-pos (point))
+    (meow--enter-insert-state)
     (when meow-select-on-change
       (setq-local meow--insert-activate-mark t))))
 
@@ -605,8 +696,7 @@ This command supports `meow-selection-command-fallback'."
   (let ((select-enable-clipboard meow-use-clipboard))
     (when (and (meow--allow-modify-p) (region-active-p))
       (kill-region (region-beginning) (region-end))
-      (meow--switch-state 'insert)
-      (setq-local meow--insert-pos (point))
+      (meow--enter-insert-state)
       (when meow-select-on-change
         (setq-local meow--insert-activate-mark t)))))
 
@@ -1158,6 +1248,115 @@ numeric, repeat times.
   (interactive "p")
   (meow-visual-line n t))
 
+(defun meow--visual-select-char ()
+  "Create a charwise selection anchored at point."
+  (thread-first
+    (meow--make-selection '(expand . char) (point) (point))
+    (meow--select t)))
+
+(defun meow-visual-start ()
+  "Enter charwise VISUAL state."
+  (interactive)
+  (unless (region-active-p)
+    (meow--visual-select-char))
+  (setq-local meow--visual-type 'char)
+  (meow--switch-state 'visual))
+
+(defun meow-visual-line-start ()
+  "Enter linewise VISUAL state."
+  (interactive)
+  (setq-local meow--visual-type 'line)
+  (meow--switch-state 'visual)
+  (meow-visual-line 1))
+
+(defun meow-visual-block-start ()
+  "Enter block VISUAL state using `rectangle-mark-mode'."
+  (interactive)
+  (unless (region-active-p)
+    (push-mark (point) t t))
+  (rectangle-mark-mode 1)
+  (setq-local meow--visual-type 'block)
+  (meow--switch-state 'visual))
+
+(defun meow-visual-exit ()
+  "Leave VISUAL state and return to NORMAL."
+  (interactive)
+  (when (bound-and-true-p rectangle-mark-mode)
+    (rectangle-mark-mode -1))
+  (meow--switch-state 'normal))
+
+(defun meow--visual-move-char (command)
+  "Run charwise visual COMMAND, starting VISUAL if necessary."
+  (unless (region-active-p)
+    (meow-visual-start))
+  (call-interactively command))
+
+(defun meow-visual-left ()
+  "Move left while extending the current VISUAL selection."
+  (interactive)
+  (pcase meow--visual-type
+    ('line (ignore))
+    ('block (backward-char))
+    (_ (meow--visual-move-char #'meow-left-expand))))
+
+(defun meow-visual-right ()
+  "Move right while extending the current VISUAL selection."
+  (interactive)
+  (pcase meow--visual-type
+    ('line (ignore))
+    ('block (forward-char))
+    (_ (meow--visual-move-char #'meow-right-expand))))
+
+(defun meow-visual-prev ()
+  "Move up while extending the current VISUAL selection."
+  (interactive)
+  (pcase meow--visual-type
+    ('line (meow-visual-line -1))
+    ('block (forward-line -1))
+    (_ (meow--visual-move-char #'meow-prev-expand))))
+
+(defun meow-visual-next ()
+  "Move down while extending the current VISUAL selection."
+  (interactive)
+  (pcase meow--visual-type
+    ('line (meow-visual-line 1))
+    ('block (forward-line 1))
+    (_ (meow--visual-move-char #'meow-next-expand))))
+
+(defun meow--visual-finish-action ()
+  "Leave VISUAL after a non-insert action."
+  (when (meow-visual-mode-p)
+    (meow--switch-state 'normal)))
+
+(defun meow-visual-yank ()
+  "Yank the active VISUAL selection."
+  (interactive)
+  (if (eq meow--visual-type 'block)
+      (progn
+        (copy-rectangle-as-kill (region-beginning) (region-end))
+        (meow--visual-finish-action))
+    (meow-save)
+    (meow--visual-finish-action)))
+
+(defun meow-visual-delete ()
+  "Delete the active VISUAL selection."
+  (interactive)
+  (if (eq meow--visual-type 'block)
+      (progn
+        (kill-rectangle (region-beginning) (region-end))
+        (meow--visual-finish-action))
+    (meow-kill)
+    (meow--visual-finish-action)))
+
+(defun meow-visual-change ()
+  "Change the active VISUAL selection."
+  (interactive)
+  (if (eq meow--visual-type 'block)
+      (progn
+        (kill-rectangle (region-beginning) (region-end))
+        (meow--enter-insert-state))
+    (meow-change)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; BLOCK
@@ -1552,6 +1751,101 @@ To search backward, use \\[negative-argument]."
     (let ((back (equal 'backward (meow--thing-get-direction 'bounds)))
           (bounds (meow--parse-bounds-of-thing-char thing)))
       (meow--select-range back bounds))))
+
+(defconst meow--vim-text-object-table
+  '((?\( . round)
+    (?\) . round)
+    (?\[ . square)
+    (?\] . square)
+    (?\{ . curly)
+    (?\} . curly)
+    (?\" . double-quote)
+    (?\' . single-quote))
+  "Mapping from Vim-style text object chars to Meow thing symbols.")
+
+(defun meow--read-vim-text-object-char (prompt)
+  "Read a Vim-style text object character with PROMPT."
+  (read-char prompt))
+
+(defun meow--vim-text-object-for-char (ch)
+  "Return the thing symbol for Vim-style text object character CH."
+  (or (alist-get ch meow--vim-text-object-table)
+      (user-error "Unsupported text object: %s" (single-key-description ch))))
+
+(defun meow--select-vim-text-object (kind thing)
+  "Select THING using KIND, which is either `inner' or `bounds'."
+  (let ((bounds (meow--parse-range-of-thing thing (eq kind 'inner))))
+    (unless bounds
+      (user-error "No %s text object at point" (symbol-name thing)))
+    (thread-first
+      (meow--make-selection '(select . transient) (car bounds) (cdr bounds))
+      (meow--select t))))
+
+(defun meow-visual-inner-of-thing ()
+  "Select the inner Vim-style text object in VISUAL mode."
+  (interactive)
+  (let* ((ch (meow--read-vim-text-object-char "Visual inner object: "))
+         (thing (meow--vim-text-object-for-char ch)))
+    (meow--select-vim-text-object 'inner thing)
+    (setq-local meow--visual-type 'char)
+    (meow--switch-state 'visual)))
+
+(defun meow-visual-bounds-of-thing ()
+  "Select the bounds Vim-style text object in VISUAL mode."
+  (interactive)
+  (let* ((ch (meow--read-vim-text-object-char "Visual around object: "))
+         (thing (meow--vim-text-object-for-char ch)))
+    (meow--select-vim-text-object 'bounds thing)
+    (setq-local meow--visual-type 'char)
+    (meow--switch-state 'visual)))
+
+(defun meow--operator-target (operator)
+  "Read and return the target for OPERATOR."
+  (let ((event (read-key (format "%s target: " (capitalize (symbol-name operator))))))
+    (pcase (event-basic-type event)
+      ((pred (lambda (it) (eq it (aref (symbol-name operator) 0))))
+       '(line))
+      (?i
+       (list 'text-object 'inner
+             (meow--vim-text-object-for-char
+              (meow--read-vim-text-object-char "Inner object: "))))
+      (?a
+       (list 'text-object 'bounds
+             (meow--vim-text-object-for-char
+              (meow--read-vim-text-object-char "Around object: "))))
+      (_
+       (user-error "Unsupported %s target" (symbol-name operator))))))
+
+(defun meow--operator-command (operator)
+  "Execute Vim-style OPERATOR on the next target."
+  (pcase (meow--operator-target operator)
+    (`(line)
+     (meow-line 1))
+    (`(text-object ,kind ,thing)
+     (meow--select-vim-text-object kind thing)))
+  (pcase operator
+    ('delete (meow-kill))
+    ('change (meow-change))
+    ('yank (meow-save)))
+  (unless (meow-insert-mode-p)
+    (when (region-active-p)
+      (meow--cancel-selection))
+    (meow--switch-state 'normal)))
+
+(defun meow-operator-delete ()
+  "Run a Vim-style delete operator."
+  (interactive)
+  (meow--operator-command 'delete))
+
+(defun meow-operator-change ()
+  "Run a Vim-style change operator."
+  (interactive)
+  (meow--operator-command 'change))
+
+(defun meow-operator-yank ()
+  "Run a Vim-style yank operator."
+  (interactive)
+  (meow--operator-command 'yank))
 
 (defun meow-indent ()
   "Indent region or current line."

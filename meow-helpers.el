@@ -82,6 +82,12 @@ Example usage:
     \\='(\"q\" . \"C-x C-q\"))"
   (apply #'meow-define-keys 'normal keybinds))
 
+(defun meow-visual-define-key (&rest keybinds)
+  "Define key for VISUAL state with KEYBINDS.
+
+Check `meow-normal-define-key' for usages."
+  (apply #'meow-define-keys 'visual keybinds))
+
 (defun meow-leader-define-key (&rest keybinds)
   "Define key in leader keymap with KEYBINDS.
 

@@ -444,6 +444,7 @@ x f' to execute `C-x C-f' or `C-x f' when `C-x C-f' is not bound."
           (let* ((key (meow--parse-input-event last-input-event))
                  (origin-cmd (cl-some (lambda (m)
                                         (when (and (not (eq m meow-normal-state-keymap))
+                                                   (not (eq m meow-visual-state-keymap))
                                                    (not (eq m meow-motion-state-keymap)))
                                           (let ((cmd (lookup-key m (kbd key))))
                                             (when (commandp cmd)
