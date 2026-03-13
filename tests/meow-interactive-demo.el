@@ -6,7 +6,7 @@
 ;; Suggested checks:
 ;; - `u`: delete or change text below, then undo it.
 ;; - `f`: jump to visible `A` or `x` below with `1`-`9`, and press `;` to reverse direction. In visual mode, `f` should extend the current selection to include the chosen char, `f<char> ; 1` should skip the current cursor char and go to the previous match, and the visible labels should still match the number keys after each same-loop jump.
-;; - `V`: start on the first, middle, and last lines of each section.
+;; - `V`: start on the first, middle, and last lines of each section. It should begin with the current line selected, show visible-line hints immediately, let `1`-`9` jump the active linewise selection to another visible line, let `;` reverse that line-hint direction, and recenter when needed so you still get up to 9 hints before the real buffer edge.
 ;; - `C-v`: start on the aligned columns below, then move with `j` / `k`.
 ;; - `/`, `?`, `n`, `N`: search for "target" and walk the jumplist with `C-o` / `C-i`.
 ;; - `gd`: place point on `meow-demo-helper` inside `meow-demo-call-site`.

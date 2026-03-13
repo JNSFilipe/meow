@@ -1438,13 +1438,26 @@ numeric, repeat times.
               meow--visual-line-anchor nil)
   (meow--switch-state 'visual))
 
-(defun meow-visual-line-start ()
-  "Enter linewise VISUAL state."
-  (interactive)
+(defun meow--visual-line-start-basic ()
+  "Enter linewise VISUAL state without reading visible-line hints."
   (setq-local meow--visual-type 'line
               meow--visual-line-anchor (meow--visual-line-range))
   (meow--switch-state 'visual)
   (meow-visual-line 1))
+
+(defun meow-visual-line-start ()
+  "Enter linewise VISUAL state and offer visible line hints."
+  (interactive)
+  (meow--visual-line-start-basic)
+  (when (eq (meow--jump-loop
+             (lambda (dir)
+               (meow--jump-line-candidates
+                dir
+                (meow--visual-line-range)))
+             #'meow--visual-line-jump-action
+             "line")
+            'escape)
+    (meow-visual-exit)))
 
 (defun meow-visual-block-start ()
   "Enter block VISUAL state using `rectangle-mark-mode'."
@@ -1596,6 +1609,12 @@ latest search pattern."
 (defun meow--visual-jump-char-action (candidate)
   "Extend the current VISUAL selection to CANDIDATE."
   (meow--visual-extend-to-point (cdr candidate))
+  (meow--ensure-visible))
+
+(defun meow--visual-line-jump-action (candidate)
+  "Extend the current linewise VISUAL selection to CANDIDATE."
+  (setq-local meow--visual-type 'line)
+  (meow--visual-line-apply-selection candidate)
   (meow--ensure-visible))
 
 (defun meow-visual-jump-char (arg char)
@@ -1943,6 +1962,62 @@ with UNIVERSAL ARGUMENT, search both side."
             (setq start (goto-char (meow--jump-next-visible-point))))
           (nreverse visibles))))))
 
+(defun meow--jump-visible-line-ranges ()
+  "Return visible visual-line ranges in the selected window."
+  (let ((window-start-pos (window-start))
+        (window-end-pos (window-end (selected-window) t))
+        ranges
+        previous-range)
+    (save-excursion
+      (goto-char window-start-pos)
+      (beginning-of-visual-line)
+      (while (< (point) window-end-pos)
+        (let ((range (meow--visual-line-range)))
+          (if (equal range previous-range)
+              (goto-char window-end-pos)
+            (when (and (< (car range) window-end-pos)
+                       (> (cdr range) window-start-pos))
+              (push range ranges))
+            (setq previous-range range)
+            (goto-char (car range))
+            (line-move-visual 1)))))
+    (nreverse ranges)))
+
+(defun meow--jump-line-can-move-p (direction origin)
+  "Return non-nil when DIRECTION can move beyond ORIGIN."
+  (save-excursion
+    (goto-char (car origin))
+    (line-move-visual (if (eq direction 'backward) -1 1))
+    (not (= (car (meow--visual-line-range)) (car origin)))))
+
+(defun meow--jump-line-recenter (direction)
+  "Recenter the window for line jumping in DIRECTION."
+  (let ((inhibit-message t))
+    (condition-case nil
+        (recenter (if (eq direction 'backward) -1 0))
+      (error nil))))
+
+(defun meow--jump-line-candidates-in-window (direction exclude-range)
+  "Return visible line candidates in DIRECTION for the current window.
+
+When EXCLUDE-RANGE is non-nil, skip the exact line range with the same
+bounds."
+  (let* ((origin (or exclude-range (meow--visual-line-range)))
+         (origin-beg (car origin))
+         candidates)
+    (dolist (range (meow--jump-visible-line-ranges))
+      (let ((beg (car range)))
+        (when (and (not (and exclude-range
+                             (= beg (car exclude-range))
+                             (= (cdr range) (cdr exclude-range))))
+                   (if (eq direction 'backward)
+                       (< beg origin-beg)
+                     (> beg origin-beg)))
+          (push range candidates))))
+    (if (eq direction 'backward)
+        (sort candidates (lambda (a b) (> (car a) (car b))))
+      (nreverse candidates))))
+
 (defun meow--jump-regexp-candidates (regex &optional direction exclude-range)
   "Return visible REGEX candidates ordered by DIRECTION.
 
@@ -1970,6 +2045,24 @@ bounds."
     (if (eq direction 'backward)
         (sort candidates (lambda (a b) (> (car a) (car b))))
       (nreverse candidates))))
+
+(defun meow--jump-line-candidates (&optional direction exclude-range)
+  "Return visible line candidates ordered by DIRECTION.
+
+When EXCLUDE-RANGE is non-nil, skip the exact line range with the same
+bounds."
+  (let* ((direction (or direction 'forward))
+         (origin (or exclude-range (meow--visual-line-range)))
+         (candidates (meow--jump-line-candidates-in-window
+                      direction
+                      exclude-range)))
+    (when (and (< (length candidates) 9)
+               (meow--jump-line-can-move-p direction origin))
+      (meow--jump-line-recenter direction)
+      (setq candidates (meow--jump-line-candidates-in-window
+                        direction
+                        exclude-range)))
+    candidates))
 
 (defun meow--jump-show-candidates (candidates direction)
   "Display numbered hint overlays for CANDIDATES in DIRECTION."

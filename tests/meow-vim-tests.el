@@ -61,6 +61,12 @@
   (goto-char (point-min))
   (forward-line 1))
 
+(defun meow-test-set-window-body-height (height)
+  "Resize the selected window to HEIGHT body lines."
+  (let ((delta (- height (window-body-height))))
+    (when (/= delta 0)
+      (window-resize (selected-window) delta nil t))))
+
 (ert-deftest meow-default-normal-keymap-is-vim-like ()
   (should (eq (lookup-key meow-normal-state-keymap (kbd "h")) 'meow-left))
   (should (eq (lookup-key meow-normal-state-keymap (kbd "j")) 'meow-next))
@@ -117,7 +123,8 @@
 
 (ert-deftest meow-visual-line-start-enters-linewise-visual-state ()
   (meow-test-with-buffer "one\ntwo\n"
-    (call-interactively #'meow-visual-line-start)
+    (meow-test-with-read-keys '(?\C-g)
+      (call-interactively #'meow-visual-line-start))
     (should (meow-visual-mode-p))
     (should (eq meow--visual-type 'line))
     (should (equal '(expand . line) (meow--selection-type)))
@@ -127,21 +134,24 @@
 (ert-deftest meow-visual-line-start-selects-current-line-at-buffer-edges ()
   (meow-test-with-buffer "one\ntwo\nthree\n"
     (goto-char (point-min))
-    (call-interactively #'meow-visual-line-start)
+    (meow-test-with-read-keys '(?\C-g)
+      (call-interactively #'meow-visual-line-start))
     (should (equal (buffer-substring-no-properties (region-beginning) (region-end))
                    "one")))
   (meow-test-with-buffer "one\ntwo\nthree\n"
     (goto-char (point-max))
     (forward-line -1)
     (end-of-line)
-    (call-interactively #'meow-visual-line-start)
+    (meow-test-with-read-keys '(?\C-g)
+      (call-interactively #'meow-visual-line-start))
     (should (equal (buffer-substring-no-properties (region-beginning) (region-end))
                    "three"))))
 
 (ert-deftest meow-visual-line-movement-keeps-anchor-line-selected ()
   (meow-test-with-buffer "one\ntwo\nthree\n"
     (goto-char (point-min))
-    (call-interactively #'meow-visual-line-start)
+    (meow-test-with-read-keys '(?\C-g)
+      (call-interactively #'meow-visual-line-start))
     (call-interactively #'meow-visual-next)
     (should (equal (buffer-substring-no-properties (region-beginning) (region-end))
                    "one\ntwo"))
@@ -152,13 +162,85 @@
 (ert-deftest meow-visual-line-j-and-k-follow-buffer-direction ()
   (meow-test-with-buffer "one\ntwo\nthree\nfour\n"
     (forward-line 2)
-    (call-interactively #'meow-visual-line-start)
+    (meow-test-with-read-keys '(?\C-g)
+      (call-interactively #'meow-visual-line-start))
     (call-interactively #'meow-visual-prev)
     (should (equal (buffer-substring-no-properties (region-beginning) (region-end))
                    "two\nthree"))
     (call-interactively #'meow-visual-next)
     (should (equal (buffer-substring-no-properties (region-beginning) (region-end))
                    "three"))))
+
+(ert-deftest meow-visual-line-start-jumps-to-visible-lines ()
+  (meow-test-with-buffer "one\ntwo\nthree\nfour\n"
+    (meow-test-with-read-keys '(?2 ?\C-g)
+      (call-interactively #'meow-visual-line-start))
+    (should (meow-visual-mode-p))
+    (should (eq meow--visual-type 'line))
+    (should (equal (buffer-substring-no-properties (region-beginning) (region-end))
+                   "one\ntwo\nthree"))))
+
+(ert-deftest meow-visual-line-start-reverse-hints-update-selection ()
+  (meow-test-with-buffer "one\ntwo\nthree\nfour\nfive\n"
+    (forward-line 2)
+    (meow-test-with-read-keys '(?2 ?\; ?1 ?\C-g)
+      (call-interactively #'meow-visual-line-start))
+    (should (meow-visual-mode-p))
+    (should (eq meow--visual-type 'line))
+    (should (equal (buffer-substring-no-properties (region-beginning) (region-end))
+                   "three\nfour"))))
+
+(ert-deftest meow-visual-line-start-escape-exits-visual ()
+  (meow-test-with-buffer "one\ntwo\n"
+    (meow-test-with-read-keys '(?\e)
+      (call-interactively #'meow-visual-line-start))
+    (should (meow-normal-mode-p))
+    (should-not (region-active-p))))
+
+(ert-deftest meow-visual-line-start-fills-forward-nine-hints-when-buffer-has-more-lines ()
+  (meow-test-with-buffer
+      (concat
+       (mapconcat (lambda (n) (format "%02d" n)) (number-sequence 1 20) "\n")
+       "\n")
+    (delete-other-windows)
+    (split-window-below)
+    (meow-test-set-window-body-height 12)
+    (goto-char (point-min))
+    (forward-line 5)
+    (set-window-start (selected-window) (point-min))
+    (meow-test-with-read-keys '(?9 ?\C-g)
+      (call-interactively #'meow-visual-line-start))
+    (should (equal (buffer-substring-no-properties (region-beginning) (region-end))
+                   (mapconcat
+                    (lambda (n) (format "%02d" n))
+                    (number-sequence 6 15)
+                    "\n")))))
+
+(ert-deftest meow-visual-line-start-fills-reverse-nine-hints-when-buffer-has-more-lines ()
+  (meow-test-with-buffer
+      (concat
+       (mapconcat (lambda (n) (format "%02d" n)) (number-sequence 1 20) "\n")
+       "\n")
+    (delete-other-windows)
+    (split-window-below)
+    (meow-test-set-window-body-height 12)
+    (goto-char (point-min))
+    (forward-line 13)
+    (forward-char 1)
+    (goto-char (line-beginning-position))
+    (set-window-start
+     (selected-window)
+     (save-excursion
+       (goto-char (point-min))
+       (forward-line 8)
+       (point)))
+    (meow-test-with-read-keys '(?\; ?9 ?\C-g)
+      (call-interactively #'meow-visual-line-start))
+    (should (equal (buffer-substring-no-properties (region-beginning) (region-end))
+                   (mapconcat
+                    (lambda (n) (format "%02d" n))
+                    (number-sequence 5 14)
+                    "\n")))))
 
 (ert-deftest meow-visual-goto-buffer-start-and-end-extend-char-selection ()
   (meow-test-with-buffer "one\ntwo\nthree\n"
@@ -179,7 +261,8 @@
 
 (ert-deftest meow-visual-goto-buffer-end-extends-line-selection ()
   (meow-test-with-buffer "one\ntwo\nthree\n"
-    (call-interactively #'meow-visual-line-start)
+    (meow-test-with-read-keys '(?\C-g)
+      (call-interactively #'meow-visual-line-start))
     (call-interactively #'meow-visual-goto-buffer-end)
     (should (equal (buffer-substring-no-properties (region-beginning) (region-end))
                    "one\ntwo\nthree"))))

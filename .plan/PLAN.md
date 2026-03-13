@@ -30,6 +30,8 @@ Turn this Meow fork into a Vim-first modal editing package with:
 20. Visual `f` selection extension
 21. Visual `f` reverse-cursor exclusion fix
 22. Visual `f` same-loop reverse refresh fix
+23. Visible line hints for `V`
+24. `V` recentering for full 9 line hints
 
 ## Update Policy
 - Keep this file, every `.plan/STAGE#_TODO.md`, `README.md`, and `AGENTS.md` in sync with the current implementation.
@@ -123,6 +125,27 @@ Turn this Meow fork into a Vim-first modal editing package with:
 - Verification:
   - batch load smoke test passes
   - ERT suite in `tests/meow-vim-tests.el` passes with coverage for same-loop reverse visual `f` on both plain visual and `w`-started selections
+
+## Stage 23 Summary
+- Goal: make `V` show an avy-style visible line jump UI without losing the existing anchored linewise visual behavior.
+- Implemented scope:
+  - kept the plain linewise visual entry path as an internal helper and layered the visible-jump loop on top for interactive `V`
+  - added visible visual-line candidates so `V` can number nearby lines, jump to them with digits `1` through `9`, and reverse direction with `;`
+  - kept the current line out of the numbered candidates and let `ESC` inside the hint loop exit the linewise visual selection cleanly
+  - preserved the anchor-based linewise selection model after each chosen line so normal linewise visual movement and actions still work
+- Verification:
+  - batch load smoke test passes
+  - ERT suite in `tests/meow-vim-tests.el` passes with coverage for `V` line jumps, reverse direction updates, and `ESC` exit
+
+## Stage 24 Summary
+- Goal: keep `V` showing a full 9 line hints when the buffer still has more lines in the active direction but the current window does not.
+- Implemented scope:
+  - taught the line-hint collector to detect when it ran out of visible forward or backward lines before the real buffer boundary
+  - recentered the window on demand for `V` line hints so forward jumps can expose more lines below and reverse jumps can expose more lines above
+  - kept the old behavior at real buffer boundaries and when the window is simply too short to display 9 targets
+- Verification:
+  - batch load smoke test passes
+  - ERT suite in `tests/meow-vim-tests.el` passes with dedicated short-window coverage for forward and reverse `V` line hints filling out 9 targets when the buffer still has more lines
 
 ## Stage 10 Summary
 - Goal: close the first round of user-reported regressions after the Stage 9 feature work and add a manual smoke-test buffer.

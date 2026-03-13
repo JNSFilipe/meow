@@ -40,7 +40,7 @@ No setup function is required for the default layout.
 ### Visual mode
 
 - `v` starts charwise visual mode
-- `V` starts linewise visual mode anchored on the current line
+- `V` starts linewise visual mode anchored on the current line and shows numbered visible-line hints; `;` reverses direction during the hint loop
 - `C-v` starts block selection with `rectangle-mark-mode`
 - `h` and `l` stay on the current line while extending the selection
 - `f` extends the active visual selection to a visible character with numbered hints; `;` reverses direction during the hint loop
@@ -71,6 +71,8 @@ No setup function is required for the default layout.
 - `f` and `w` use a Meow-native visible-jump loop with digits `1` through `9`; no external `avy.el` runtime dependency is required.
 - `w` now promotes its target into Meow's actual visual state, keeps point at the end of the selected word, never numbers the current occurrence as a jump target, and lets `ESC` and visual movement/action keys keep working normally.
 - Because `w` ends in real visual state, visual `f` can keep extending that selection instead of replacing it.
+- `V` reuses the same visible-jump loop for lines, so digits jump the active linewise selection to visible lines, `;` reverses direction, and `ESC` exits the selection.
+- When `V` has fewer than 9 visible line hints in the active direction but the buffer still has more lines there, it recenters the window to expose up to 9 numbered line targets.
 - Reverse visual `f` skips the character currently under the visual cursor, so `f<char> ; 1` goes to the previous match instead of staying on the current one.
 - Reverse visual `f` also refreshes its numbered candidates after each jump inside the same hint loop, so the overlay labels and numeric choices stay in sync after `;`.
 - Jump history is window-local and records explicit relocations such as `gg`, `G`, `gd`, `meow-goto-line`, `/?nN`, Meow's mark/global-mark jump helpers, and registered third-party navigation commands.
